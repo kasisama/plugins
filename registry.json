@@ -1,6 +1,8 @@
 {
   "version": 1,
   "plugins": [
+    { "package": "@magpie-community/opencode-joycode-auth", "name": "JoyCode", "providers": ["joycode"], "community": true,
+      "summary": { "en": "Unofficial JoyCode provider: JD account browser sign-in, live models and credit multipliers, plan credits and streaming tool calls.", "zh": "非官方 JoyCode 插件：京东账号浏览器登录，动态模型与积分倍率、套餐额度及流式工具调用。" } },
     {"package": "@magpie-community/opencode-kimi-work-auth", "name": "Kimi Work", "icon": "kimi", "providers": ["kimi-work"], "community": true, "summary": {"en": "Kimi desktop Work subscription through its local sign-in, with live Work models and shared membership usage. Separate from Kimi Code.", "zh": "使用本机普通 Kimi 桌面版的 Work 登录，自动读取 Work 模型和会员共享用量；独立于 Kimi Code。"}},
     { "package": "@magpie-community/opencode-zen-free-auth", "name": "OpenCode Zen Free", "icon": "opencode", "providers": ["opencode-zen-free"], "community": true,
       "summary": { "en": "OpenCode Zen's free models with the public credential, automatic discovery and native streaming protocols.", "zh": "使用 public 凭证接入 OpenCode Zen 免费模型，自动发现模型并支持原生流式协议。" } },
