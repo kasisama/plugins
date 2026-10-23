@@ -22,6 +22,39 @@ test('HTTP 200 raw gateway denial becomes actionable error, not empty SSE', asyn
   assert.equal(r.headers.get('x-magpie-sign-in'), 'kept')
   assert.equal((await r.json()).error.code, 'AI_GRAY_ACCESS_DENIED')
 })
+test('HTTP 200 SSE with JD msg preserves the business error reason', async t => {
+  const r = await request(t, new Response(JSON.stringify({ code: 9, msg: '积分已用完', data: { private: 'private-marker' } }), { headers: { 'content-type': 'text/event-stream' } }))
+  assert.equal(r.status, 502)
+  assert.equal(r.headers.get('x-magpie-sign-in'), 'kept')
+  assert.deepEqual((await r.json()).error, { type: 'upstream_error', code: 9, message: '积分已用完' })
+})
+
+test('HTTP 200 SSE code 401 expires a ticket after identity has been cached', async t => {
+  let infoCalls = 0, chats = 0
+  t.mock.method(globalThis, 'fetch', async url => {
+    if (new URL(url).searchParams.get('functionId') === 'joycode_userInfo') {
+      infoCalls++
+      return Response.json({ code: 0, data: { userId: 'test-user' } })
+    }
+    chats++
+    return new Response(chats === 1 ? 'data: [DONE]\n\n' : JSON.stringify({ code: 401, data: null, msg: '登录票据已失效' }), { headers: { 'content-type': 'text/event-stream' } })
+  })
+  const hooks = await plugin.server({})
+  const loader = await hooks.auth.loader(async () => ({ type: 'api', key: 'fake-key' }))
+  const send = () => loader.fetch('https://api-ai.jd.com/v1/chat/completions', {
+    method: 'POST', body: JSON.stringify({ model: 'JoyAI-Code-1.6', messages: [{ role: 'user', content: 'OK' }], stream: true }),
+  })
+  const first = await send()
+  assert.equal(first.status, 200)
+  await first.text()
+  const expired = await send()
+  assert.equal(infoCalls, 1)
+  assert.equal(chats, 2)
+  assert.equal(expired.status, 401)
+  assert.equal(expired.headers.get('x-magpie-sign-in'), 'expired')
+  assert.deepEqual((await expired.json()).error, { type: 'upstream_error', code: 401, message: '登录票据已失效' })
+})
+
 test('valid SSE including tool deltas is preserved byte for byte', async t => {
   const text = ': heartbeat\n\ndata: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{}"}}]}}]}\n\ndata: [DONE]\n\n'
   const r = await request(t, new Response(chunks([text.slice(0,4), text.slice(4)]), { headers: { 'content-type': 'text/event-stream' } }))

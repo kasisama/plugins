@@ -1,6 +1,6 @@
 # JoyCode
 
-把京东云 **JoyCode**（JoyCoder IDE 自带的模型额度）作为一个 OpenAI 兼容供应商接进 [magpie](https://magpie.dev)。装好后，所有 agent（Claude Code、Codex 等）都能通过 magpie 用 `joycode/<model>` 访问 JoyCode 的模型，并享受 magpie 的多账号号池、故障切换和用量统计。
+把京东云 **JoyCode**（JoyCoder IDE 自带的模型额度）作为一个 OpenAI 兼容供应商接进 [magpie](https://usemagpie.ai)。装好后，所有 agent（Claude Code、Codex 等）都能通过 magpie 用 `joycode/<model>` 访问 JoyCode 的模型，并享受 magpie 的多账号号池、故障切换和用量统计。
 
 逆向了 JoyCode IDE 的「彩网关」协议（`https://api-ai.jd.com/api`，HMAC-SHA256 签名 query + `ptKey` 账号票据头）。请求与 IDE 本身走同一账号、同一额度。
 

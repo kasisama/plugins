@@ -56,6 +56,46 @@ test('gateway code 0 and data.userId complete browser login and provide loader c
   assert.equal(typeof loader.fetch, 'function')
 })
 
+test('wrong authKey returns 404 without settling an in-flight valid sign-in', async (t) => {
+  let release, started
+  const gate = new Promise(resolve => { release = resolve })
+  const checking = new Promise(resolve => { started = resolve })
+  let calls = 0
+  t.mock.method(globalThis, 'fetch', async () => {
+    calls++
+    started()
+    await gate
+    return Response.json({ code: 0, data: { userId: 'test-account' } })
+  })
+  const hooks = await plugin.server({})
+  const flow = await hooks.auth.methods[0].authorize()
+  const params = new URL(flow.url).searchParams
+  const valid = new URL(`http://127.0.0.1:${params.get('authPort')}/`)
+  valid.search = params.toString()
+  valid.searchParams.set('pt_key', 'test-ticket')
+  let settled = false
+  const result = flow.callback().then(value => { settled = true; return value })
+  const pending = realFetch(valid, { signal: AbortSignal.timeout(2000) })
+  try {
+    await checking
+    for (const key of ['wrong-key', null]) {
+      const invalid = new URL(valid)
+      invalid.searchParams.delete('pt_key')
+      if (key === null) invalid.searchParams.delete('authKey')
+      else invalid.searchParams.set('authKey', key)
+      const response = await realFetch(invalid, { signal: AbortSignal.timeout(2000) })
+      assert.equal(response.status, 404)
+      await response.text()
+      assert.equal(settled, false)
+      assert.equal(calls, 1)
+    }
+  } finally {
+    release()
+    await (await pending).text()
+  }
+  assert.equal((await result).type, 'success')
+})
+
 for (const [name, upstream] of [
   ['business failure despite HTTP 200', () => Response.json({ code: 7, data: { userId: 'test-account', pk: 'private-marker' } })],
   ['missing user identity', () => Response.json({ code: 0, data: { pk: 'private-marker' } })],

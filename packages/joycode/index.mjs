@@ -3,18 +3,18 @@
  * opencode-joycode-auth — JoyCode (JD Cloud JoyCoder IDE credits) as a
  * magpie / OpenCode provider.
  *
- * Protocol (reversed from the JoyCode IDE's bundled extension.js and proven in
- * the standalone proxy ../server.mjs):
+ * Protocol derived from the JoyCode IDE's bundled extension.js:
  *   POST https://api-ai.jd.com/api?appid=joycode_ide&functionId=chat_completions&t=<ms>&sign=<hmac>
  *   headers: ptKey (account ticket), loginType, optional tenant
  *   body:    OpenAI chat completions JSON
  *
  * magpie's gateway already converts any agent API into OpenAI chat
- * completions format before calling our fetch, so we only rewrite the URL
- * (with a fresh per-request HMAC signature) and inject the credential
- * headers. Streaming responses are passed through untouched.
+ * completions format before calling our fetch. We sign each request, inject
+ * credential headers, and add authenticated account identity to the body.
+ * We inspect response prefixes for bare JSON gateway errors; valid SSE bytes
+ * are replayed unchanged, including tool-call deltas.
  *
- * Options (magpie plugin options opencode-joycode-auth '{"…"}'):
+ * Options (magpie plugin options joycode '{"…"}'):
  *   { "flatten": true }  — flatten multi-turn messages into a single prompt
  *   before sending (fallback if JoyCode rejects multi-turn / tool-call
  *   payloads). Drops tools; useful for plain chat only.
@@ -84,8 +84,7 @@ const MODELS = {
 // them out of that. The test surface is `_internal`.)
 
 /**
- * JoyCode gateway signature (mirrors extension.js module 68327, proven in
- * server.mjs):
+ * JoyCode gateway signature (mirrors extension.js module 68327):
  *   merged = { ...extra, appid, functionId, t: Date.now() }
  *   h      = sortedKeys.map(k => merged[k]).filter(non-empty).join('&')
  *   sign   = hex( HMAC-SHA256(h, secret) )
@@ -122,7 +121,7 @@ function buildGatewayHeaders(ptKey, tenant, loginType = LOGIN_TYPE) {
 
 /**
  * OpenAI `messages` -> { prompt, system } — fallback for accounts/backends
- * that reject multi-turn or tool-call payloads. Ported from server.mjs.
+ * that reject multi-turn or tool-call payloads.
  */
 function flattenMessages(messages) {
   const systemParts = []
@@ -245,7 +244,8 @@ async function browserLogin() {
       resolveLogin(ok ? { ok: true, ...extra } : { ok: false, error: message })
     }
     if (q.get('authKey') !== authKey || Number(q.get('authPort')) !== server.address()?.port) {
-      return finish(false, '登录校验失败（authKey 不匹配）')
+      res.writeHead(404)
+      return res.end()
     }
     const ptKey = q.get('pt_key')
     const loginType = q.get('loginType') || LOGIN_TYPE
@@ -342,7 +342,7 @@ async function normalizeChatResponse(response) {
     if (json?.error || (json?.code !== undefined && Number(json.code) !== 0)) {
       const code = json.error?.code ?? json.code
       const status = code === 'AI_GRAY_ACCESS_DENIED' ? 403 : Number(code) === 401 ? 401 : 502
-      const message = json.error?.message ?? json.message
+      const message = json.error?.message ?? json.message ?? json.msg
       return chatError(status, code, typeof message === 'string' ? message.slice(0, 500) : 'JoyCode 请求被拒绝')
     }
     if (json?.choices) return Response.json(json)
@@ -390,7 +390,8 @@ async function fetchAccountData(auth, functionId, body = {}) {
     throw Object.assign(new Error('JoyCode 登录已失效，请重新登录'), { signIn: 'expired' })
   }
   if (!response.ok || !json || (json.code !== undefined && Number(json.code) !== 0)) {
-    throw new Error(`JoyCode 数据查询失败（HTTP ${response.status}）`)
+    const message = json?.error?.message ?? json?.message ?? json?.msg
+    throw new Error(`JoyCode 数据查询失败（HTTP ${response.status}）${typeof message === 'string' ? `：${message.slice(0, 500)}` : ''}`)
   }
   return json.data ?? json
 }

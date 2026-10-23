@@ -51,10 +51,20 @@ test('missing numeric values never become fake zero quota', async (t) => {
   assert.equal(result.balance, undefined)
 })
 
+for (const field of ['msg', 'message']) {
+  test(`business error preserves ${field} without exposing account data`, async t => {
+    const result = await query(t, () => Response.json({ code: 9, [field]: '套餐不可用', data: { private: 'private-marker' } }))
+    assert.equal(result.error, 'JoyCode 数据查询失败（HTTP 200）：套餐不可用')
+    assert.equal(result.signIn, 'kept')
+    assert.deepEqual(result.windows, [])
+    assert.doesNotMatch(JSON.stringify(result), /private-marker|fake-ticket/)
+  })
+}
+
 for (const [name, response, signIn] of [
   ['401', () => new Response('private-marker', { status: 401 }), 'expired'],
   ['403 permission error', () => new Response('private-marker', { status: 403 }), 'kept'],
-  ['business error', () => Response.json({ code: 9, message: 'private-marker' }), 'kept'],
+  ['business error with malformed message', () => Response.json({ code: 9, msg: { private: 'private-marker' } }), 'kept'],
   ['invalid JSON', () => new Response('private-marker'), 'kept'],
   ['network failure', () => { throw new Error('private-marker') }, 'kept'],
   ['empty quota', () => Response.json({ code: 0, data: { usageItems: [] } }), 'kept'],
